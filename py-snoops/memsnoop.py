@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL
 #!/usr/bin/python
 
 import os

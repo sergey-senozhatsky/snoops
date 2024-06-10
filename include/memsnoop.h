@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL
+
 #ifndef __MEMSNOOP_H__
 #define __MEMSNOOP_H__
 

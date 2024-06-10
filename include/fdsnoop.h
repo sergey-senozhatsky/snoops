@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL
+
 #ifndef __FDSNOOP_H__
 #define __FDSNOOP_H__
 
