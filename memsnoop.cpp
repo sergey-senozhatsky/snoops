@@ -23,38 +23,37 @@ static struct option long_options[] = {
 	{0, 0, 0, 0}
 };
 
-static const char *libc_path(void)
-{
-	return "/lib64/libc.so.6";
-}
-
 static int attach_probes(struct memsnoop_bpf *snoop, int pid)
 {
 	LIBBPF_OPTS(bpf_uprobe_opts, uopts);
+	std::string libc;
+
+	if (libsnoop_lookup_lib("libc.so.0", libc))
+		return -ENOENT;
 
 	uopts.func_name = "malloc";
 	uopts.retprobe = false;
-	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc_path(), call_malloc, &uopts);
+	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc.c_str(), call_malloc, &uopts);
 
 	uopts.func_name = "malloc";
 	uopts.retprobe = true;
-	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc_path(), ret_malloc, &uopts);
+	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc.c_str(), ret_malloc, &uopts);
 
 	uopts.func_name = "mmap";
 	uopts.retprobe = false;
-	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc_path(), call_mmap, &uopts);
+	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc.c_str(), call_mmap, &uopts);
 
 	uopts.func_name = "mmap";
 	uopts.retprobe = true;
-	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc_path(), ret_mmap, &uopts);
+	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc.c_str(), ret_mmap, &uopts);
 
 	uopts.func_name = "munmap";
 	uopts.retprobe = false;
-	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc_path(), call_munmap, &uopts);
+	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc.c_str(), call_munmap, &uopts);
 
 	uopts.func_name = "free";
 	uopts.retprobe = false;
-	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc_path(), call_free, &uopts);
+	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc.c_str(), call_free, &uopts);
 
 	LIBBPF_OPTS(bpf_kprobe_opts, kopts);
 	kopts.retprobe = false;

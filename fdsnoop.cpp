@@ -21,26 +21,25 @@ static struct option long_options[] = {
 	{0, 0, 0, 0}
 };
 
-static const char *libc_path(void)
-{
-	return "/lib64/libc.so.6";
-}
-
 static int attach_probes(struct fdsnoop_bpf *snoop, int pid)
 {
 	LIBBPF_OPTS(bpf_uprobe_opts, uopts);
+	std::string libc;
+
+	if (libsnoop_lookup_lib("libc.so.0", libc))
+		return -ENOENT;
 
 	uopts.func_name = "open";
 	uopts.retprobe = true;
-	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc_path(), ret_open, &uopts);
+	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc.c_str(), ret_open, &uopts);
 
 	uopts.func_name = "dup";
 	uopts.retprobe = true;
-	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc_path(), ret_dup, &uopts);
+	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc.c_str(), ret_dup, &uopts);
 
 	uopts.func_name = "close";
 	uopts.retprobe = false;
-	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc_path(), call_close, &uopts);
+	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc.c_str(), call_close, &uopts);
 
 	return 0;
 }

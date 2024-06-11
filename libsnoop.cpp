@@ -1,4 +1,5 @@
 #include <libsnoop.h>
+#include <filesystem>
 
 #include <blazesym.h>
 
@@ -88,4 +89,23 @@ void libsnoop_stack_symbolize(__u64 *ents, __s32 num_ents, __u32 pid)
 
 	printf("\n");
 	blaze_result_free(res);
+}
+
+int libsnoop_lookup_lib(const char *name, std::string &path)
+{
+	char p[4096];
+
+	snprintf(p, sizeof(p), "/lib64/%s", name);
+	if (std::filesystem::exists(p))
+		goto ok;
+
+	snprintf(p, sizeof(p), "/lib/%s", name);
+	if (std::filesystem::exists(p))
+		goto ok;
+
+	return -ENOENT;
+
+ok:
+	path = p;
+	return 0;
 }

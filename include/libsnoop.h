@@ -7,6 +7,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <string>
+
 #define LIBSNOOP_ATTACH_UPROBE(s, pid, obj, prog, opts)				\
 	do {									\
 		printf("Attaching uprobe: " #prog "\n");			\
@@ -44,5 +46,7 @@
 int libsnoop_symbolizer_init(void);
 void libsnoop_symbolizer_release(void);
 void libsnoop_stack_symbolize(__u64 *ents, __s32 num_ents, __u32 pid);
+
+int libsnoop_lookup_lib(const char *name, std::string &path);
 
 #endif // __LIBSNOOP_H__
