@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL
 
 #include <getopt.h>
-#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -15,51 +14,14 @@
 
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
-#include <blazesym.h>
+#include <libsnoop.h>
 #include <memsnoop.h>
 #include <memsnoop.skel.h>
-
-static struct blaze_symbolizer *symbolizer;
 
 static struct option long_options[] = {
 	{"pid",		required_argument,	0,	'p'},
 	{0, 0, 0, 0}
 };
-
-#define ATTACH_UPROBE(s, pid, obj, prog, opts)					\
-	do {									\
-		printf("Attaching uprobe: " #prog "\n");			\
-		if (s->links.prog) {						\
-			fprintf(stderr, "Already attached: " #prog "\n");	\
-			return -EINVAL;						\
-		}								\
-		s->links.prog = bpf_program__attach_uprobe_opts(s->progs.prog,	\
-								(pid),		\
-								(obj),		\
-								0,		\
-								(opts));	\
-		if (!s->links.prog) {						\
-			perror("Failed to attach: " #prog);			\
-			return -EINVAL;						\
-		}								\
-	} while (false)
-
-#define ATTACH_KPROBE(s, prog, sym, opts)					\
-	do {									\
-		printf("Attaching kprobe: " #prog "\n");			\
-		if (s->links.prog) {						\
-			fprintf(stderr, "Already attached: " #prog "\n");	\
-			return -EINVAL;						\
-		}								\
-		s->links.prog = bpf_program__attach_kprobe_opts(s->progs.prog,	\
-								(sym),		\
-								(opts));	\
-		if (!s->links.prog) {						\
-			perror("Failed to attach: " #prog);			\
-			return -EINVAL;						\
-		}								\
-	} while (false)
-
 
 static const char *libc_path(void)
 {
@@ -72,115 +34,34 @@ static int attach_probes(struct memsnoop_bpf *snoop, int pid)
 
 	uopts.func_name = "malloc";
 	uopts.retprobe = false;
-	ATTACH_UPROBE(snoop, pid, libc_path(), call_malloc, &uopts);
+	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc_path(), call_malloc, &uopts);
 
 	uopts.func_name = "malloc";
 	uopts.retprobe = true;
-	ATTACH_UPROBE(snoop, pid, libc_path(), ret_malloc, &uopts);
+	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc_path(), ret_malloc, &uopts);
 
 	uopts.func_name = "mmap";
 	uopts.retprobe = false;
-	ATTACH_UPROBE(snoop, pid, libc_path(), call_mmap, &uopts);
+	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc_path(), call_mmap, &uopts);
 
 	uopts.func_name = "mmap";
 	uopts.retprobe = true;
-	ATTACH_UPROBE(snoop, pid, libc_path(), ret_mmap, &uopts);
+	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc_path(), ret_mmap, &uopts);
 
 	uopts.func_name = "munmap";
 	uopts.retprobe = false;
-	ATTACH_UPROBE(snoop, pid, libc_path(), call_munmap, &uopts);
+	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc_path(), call_munmap, &uopts);
 
 	uopts.func_name = "free";
 	uopts.retprobe = false;
-	ATTACH_UPROBE(snoop, pid, libc_path(), call_free, &uopts);
+	LIBSNOOP_ATTACH_UPROBE(snoop, pid, libc_path(), call_free, &uopts);
 
 	LIBBPF_OPTS(bpf_kprobe_opts, kopts);
 	kopts.retprobe = false;
-	ATTACH_KPROBE(snoop, call_handle_mm_fault, "handle_mm_fault", &kopts);
+	LIBSNOOP_ATTACH_KPROBE(snoop, call_handle_mm_fault, "handle_mm_fault",
+			       &kopts);
 
 	return 0;
-}
-
-static void frame(const char *name, uintptr_t input_addr, uintptr_t addr,
-		  uint64_t offset, const blaze_symbolize_code_info* code_info)
-{
-	printf("%16s  %s", "", name);
-	if (code_info != NULL && code_info->dir != NULL && code_info->file != NULL)
-		printf("@ %s/%s:%u [inlined]\n", code_info->dir, code_info->file, code_info->line);
-	else if (code_info != NULL && code_info->file != NULL)
-		printf("@ %s:%u [inlined]\n", code_info->file, code_info->line);
-	else
-		printf("[inlined]\n");
-}
-
-static void inlined_frame(const char *name, uintptr_t input_addr, uintptr_t addr,
-			  uint64_t offset, const blaze_symbolize_code_info* code_info)
-{
-	printf("%016lx: %s @ 0x%lx+0x%lx", input_addr, name, addr, offset);
-	if (code_info != NULL && code_info->dir != NULL && code_info->file != NULL)
-		printf(" %s/%s:%u\n", code_info->dir, code_info->file, code_info->line);
-	else if (code_info != NULL && code_info->file != NULL)
-		printf(" %s:%u\n", code_info->file, code_info->line);
-	else
-		printf("\n");
-}
-
-static void show_stack_trace(struct memsnoop_event *event)
-{
-	const struct blaze_symbolize_inlined_fn* inlined;
-	const struct blaze_result *res;
-	const struct blaze_sym *sym;
-	__u16 num_ents;
-	__u64 *ents;
-
-	if (event->pid) {
-		struct blaze_symbolize_src_process src = {
-			.type_size = sizeof(src),
-			.pid = event->pid,
-		};
-
-		ents = event->ustack_ents;
-		num_ents = event->num_ustack_ents;
-
-		if (!num_ents)
-			return;
-
-		res = blaze_symbolize_process_abs_addrs(symbolizer, &src,
-							(const uintptr_t *)ents,
-							num_ents);
-	} else {
-		struct blaze_symbolize_src_kernel src = {
-			.type_size = sizeof(src),
-		};
-
-		ents = event->ustack_ents;
-		num_ents = event->num_ustack_ents;
-
-		if (!num_ents)
-			return;
-
-		res = blaze_symbolize_kernel_abs_addrs(symbolizer, &src,
-						       (const uintptr_t *)ents,
-						       num_ents);
-	}
-
-	for (size_t i = 0; i < num_ents; i++) {
-		if (!res || res->cnt <= i || !res->syms[i].name) {
-			printf("%016llx: <no-symbol>\n", ents[i]);
-			continue;
-		}
-
-		sym = &res->syms[i];
-		frame(sym->name, ents[i], sym->addr, sym->offset, &sym->code_info);
-
-		for (size_t j = 0; j < sym->inlined_cnt; j++) {
-			inlined = &sym->inlined[j];
-			inlined_frame(sym->name, 0, 0, 0, &inlined->code_info);
-		}
-	}
-
-	printf("\n");
-	blaze_result_free(res);
 }
 
 static int handle_memsnoop_event(void *ctx, void *data, size_t data_sz)
@@ -216,7 +97,10 @@ static int handle_memsnoop_event(void *ctx, void *data, size_t data_sz)
 		return -EINVAL;
 	};
 
-	show_stack_trace(event);
+	libsnoop_stack_symbolize(event->ustack_ents, event->num_ustack_ents,
+				 event->pid);
+	libsnoop_stack_symbolize(event->kstack_ents, event->num_kstack_ents,
+				 0);
 	return 0;
 }
 
@@ -239,12 +123,9 @@ static int memsnoop(pid_t pid)
 		goto cleanup;
 	}
 
-	symbolizer = blaze_symbolizer_new();
-	if (!symbolizer) {
-		fprintf(stderr, "Failed to create a symbolizer\n");
-		err = -EINVAL;
+	err = libsnoop_symbolizer_init();
+	if (err)
 		goto cleanup;
-	}
 
 	err = attach_probes(snoop, pid);
 	if (err)
@@ -264,7 +145,7 @@ static int memsnoop(pid_t pid)
 cleanup:
 	ring_buffer__free(rb);
 	memsnoop_bpf__destroy(snoop);
-	blaze_symbolizer_free(symbolizer);
+	libsnoop_symbolizer_release();
 	return err;
 }
 

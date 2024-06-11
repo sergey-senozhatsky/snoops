@@ -116,7 +116,7 @@ endforeach()
 # User-space applications
 set(APPS memsnoop fdsnoop)
 foreach(APP ${APPS})
-	add_executable(${APP} ${CMAKE_SOURCE_DIR}/${APP}.cpp ${OUTPUT_DIR}/${APP}.skel.h)
+	add_executable(${APP} ${CMAKE_SOURCE_DIR}/${APP}.cpp ${OUTPUT_DIR}/${APP}.skel.h ${CMAKE_SOURCE_DIR}/libsnoop.cpp)
 	target_link_libraries(${APP} PRIVATE ${CMAKE_SOURCE_DIR}/blazesym/target/release/libblazesym_c.a ${CMAKE_CURRENT_BINARY_DIR}/libbpf/libbpf.a -lelf -lz -lc++ -lc++abi)
 	add_dependencies(${APP} blazesym-build bpftool-build libbpf-build ${APP}_skel_target)
 endforeach()
